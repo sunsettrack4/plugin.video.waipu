@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<settings>
+    <category label="Settings">
+        <setting label="Settings" type="lsep"/>
+        <setting label="Load favorite channels only" type="bool" id="fav" default="false"/>
+    </category>
+</settings>
