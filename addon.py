@@ -215,9 +215,25 @@ def live(id=None, restart=0, page=0):
                     
                     de = None
                     try:
-                        dt = datetime.now(timezone.utc)
-                        h = "00" if 0 <= dt.hour < 4 else "04" if 4 <= dt.hour < 8 else "08" if 8 <= dt.hour < 12 else "12" if 12 <= dt.hour < 16 else "16" if 16 <= dt.hour < 20 else "20"
-                        details = requests.get(f'https://epg-cache.waipu.tv/api/grid/{item["stationId"]}/{str(dt.year)}-{("0" if len(str(dt.month)) == 1 else "") + str(dt.month)}-{("0" if len(str(dt.day)) == 1 else "") + str(dt.day)}T{h}:00:00.000Z').json()
+                        nxt = ""
+                        nxt_id = None
+                        nxt_count = 0
+                        
+                        dt1 = datetime.now() - timedelta(hours=4)
+                        h1 = "00" if 0 <= dt1.hour < 4 else "04" if 4 <= dt1.hour < 8 else "08" if 8 <= dt1.hour < 12 else "12" if 12 <= dt1.hour < 16 else "16" if 16 <= dt1.hour < 20 else "20"
+                        details_1 = requests.get(f'https://epg-cache.waipu.tv/api/grid/{item["stationId"]}/{str(dt1.year)}-{("0" if len(str(dt1.month)) == 1 else "") + str(dt1.month)}-{("0" if len(str(dt1.day)) == 1 else "") + str(dt1.day)}T{h1}:00:00.000Z').json()
+                        
+                        dt2 = datetime.now()
+                        h2 = "00" if 0 <= dt2.hour < 4 else "04" if 4 <= dt2.hour < 8 else "08" if 8 <= dt2.hour < 12 else "12" if 12 <= dt2.hour < 16 else "16" if 16 <= dt2.hour < 20 else "20"
+                        details_2 = requests.get(f'https://epg-cache.waipu.tv/api/grid/{item["stationId"]}/{str(dt2.year)}-{("0" if len(str(dt2.month)) == 1 else "") + str(dt2.month)}-{("0" if len(str(dt2.day)) == 1 else "") + str(dt2.day)}T{h2}:00:00.000Z').json()
+
+                        dt = details_1 + details_2
+                        details = {}
+                        for d in dt:
+                            if not details.get(d["id"]):
+                                details[d["id"]] = d
+                        details = [details[d] for d in details.keys()]
+                        
                         for d in details:
                             tb = datetime(*(time.strptime(d["startTime"], "%Y-%m-%dT%H:%M:%SZ")[0:6])).replace(tzinfo=timezone.utc)
                             te = datetime(*(time.strptime(d["stopTime"], "%Y-%m-%dT%H:%M:%SZ")[0:6])).replace(tzinfo=timezone.utc)
@@ -229,11 +245,15 @@ def live(id=None, restart=0, page=0):
                                     d["md"] = {"textContent": {"descLong": ""}}
                                 d["bcd"] = f'{tb.astimezone(tzlocal.get_localzone()).strftime("%H:%M")} - {te.astimezone(tzlocal.get_localzone()).strftime("%H:%M")}'
                                 de = d
-                            elif (datetime.now(timezone.utc) < tb) and de and not de.get("nxt"):
-                                de["nxt"] = f'[B]{tb.astimezone(tzlocal.get_localzone()).strftime("%H:%M")} - {te.astimezone(tzlocal.get_localzone()).strftime("%H:%M")}[/B]: {d["title"]}\n'
+                            elif datetime.now(timezone.utc) < tb:
+                                if nxt_count < 1:
+                                    nxt = nxt + f'[B]{tb.astimezone(tzlocal.get_localzone()).strftime("%H:%M")} - {te.astimezone(tzlocal.get_localzone()).strftime("%H:%M")}[/B]: {d["title"]}\n'
+                                    nxt_id = d["id"] if not d["recordingForbidden"] else None
+                                nxt_count = nxt_count + 1
+                        de["nxt"] = nxt if nxt else None
                     except:
                         pass
-
+                    
                     ch_logo = logos[item["stationId"]].replace(
                         "${streamQuality}", item["streamQuality"]).replace(
                             "${shape}", "standard").replace("${resolution}", "320x180")
@@ -243,6 +263,14 @@ def live(id=None, restart=0, page=0):
                         li.setInfo('video', {'title': f'[B]{item["displayName"]}[/B] | {de["title"]}{(" | "+de["episodeTitle"]) if de.get("episodeTitle") else ""}', "plot": f'[COLOR=yellow][B]{de["bcd"]}: [/B]{de["title"]}[/COLOR]\n{de["nxt"] if de.get("nxt") else ""}\n{de["md"]["textContent"].get("descLong", "")}'})
                         li.setArt({"thumb": ch_logo, "poster": de.get("previewImage", "").replace("${resolution}", "1920x1080"), "fanart": de.get("previewImage", "").replace("${resolution}", "1920x1080")})
                         restart = int(datetime(*(time.strptime(de["startTime"], "%Y-%m-%dT%H:%M:%SZ")[0:6])).replace(tzinfo=timezone.utc).timestamp())
+                        context_list = []
+                        if not d["recordingForbidden"]:
+                            desc_now_url = build_url({'mode': 'add_rec', 'id': de["id"]})
+                            context_list.append(("Aktuelle Sendung aufnehmen", f"RunPlugin({desc_now_url})"))
+                        if nxt_id:
+                            desc_next_url = build_url({'mode': 'add_rec', 'id': nxt_id})
+                            context_list.append(("Nächste Sendung aufnehmen", f"RunPlugin({desc_next_url})"))
+                        li.addContextMenuItems(context_list)
                     else:
                         li = xbmcgui.ListItem(label=item["displayName"])
                         li.setInfo('video', {'title': item["displayName"], "plot": de["title"] if de else ""})
@@ -266,7 +294,11 @@ def rec(id=None, page=0):
 
         license_str = get_license(token["access_token"])
 
-        stream_url    = [i for i in requests.get(rec_start_url, headers=headers).json()["streams"] if i["protocol"] == "MPEG_DASH"][0]["href"]
+        try:
+            stream_url    = [i for i in requests.get(rec_start_url, headers=headers).json()["streams"] if i["protocol"] == "MPEG_DASH"][0]["href"]
+        except:
+            xbmcgui.Dialog().notification(__addonname__, "Die Aufnahme kann aktuell nicht wiedergegeben werden.", xbmcgui.NOTIFICATION_ERROR)
+            return
         
         playback(stream_url, license_str)
         return
@@ -281,7 +313,7 @@ def rec(id=None, page=0):
 
     headers.update({"Accept": "application/vnd.waipu.recording-v4+json"})
 
-    for number, item in enumerate(rec_list):
+    for number, item in enumerate(reversed(rec_list)):
         if number < page*20:
             continue
         if number > 19+page*20:
@@ -290,17 +322,22 @@ def rec(id=None, page=0):
             xbmcplugin.addDirectoryItem(handle=__addon_handle__, url=url, listitem=li, isFolder=True)
             break
 
-        if item["status"] == "FINISHED":
-            try:
-                details = requests.get(f"https://recording.waipu.tv/api/recordings/{item['id']}", headers=headers).json()
-            except Exception as e:
-                details = str(e)
-            li = xbmcgui.ListItem(label=f'[B]{item["stationDisplay"]}[/B] | {item["title"]}{" | "+item["episodeTitle"] if item.get("episodeTitle") else ""} ({datetime.strptime(details["startTime"], "%Y-%m-%dT%H:%M:%S%z").strftime("%d.%m.%Y %H:%M")})')
-            li.setInfo('video', {'title': item["title"], 'plot': details['programDetails']['textContent']['descLong'] if details else ''})
-            if item.get("previewImage"):
-                li.setArt({"thumb": item["previewImage"].replace("${resolution}", "1920x1080"), "fanart": item["previewImage"].replace("${resolution}", "1920x1080")})
-            url = build_url({"mode": "rec", "id": item["id"]})
-            menu_listing.append((url, li, False))
+        try:
+            details = requests.get(f"https://recording.waipu.tv/api/recordings/{item['id']}", headers=headers).json()
+        except Exception as e:
+            details = str(e)
+        if item["status"] == "SCHEDULED":
+            item["title"] = "[COLOR=yellowgreen][B](Geplant) [/B][/COLOR] " + item["title"]
+        if item["status"] == "RECORDING":
+            item["title"] = "[COLOR=yellow][B](Laufend) [/B][/COLOR] " + item["title"]
+        li = xbmcgui.ListItem(label=f'[B]{item["stationDisplay"]}[/B] | {item["title"]}{" | "+item["episodeTitle"] if item.get("episodeTitle") else ""} ({datetime.strptime(details["startTime"], "%Y-%m-%dT%H:%M:%S%z").strftime("%d.%m.%Y %H:%M")})')
+        li.setInfo('video', {'title': item["title"], 'plot': details['programDetails']['textContent']['descLong'] if details else ''})
+        if item.get("previewImage"):
+            li.setArt({"thumb": item["previewImage"].replace("${resolution}", "1920x1080"), "fanart": item["previewImage"].replace("${resolution}", "1920x1080")})
+        desc_now_url = build_url({'mode': 'del_rec', 'id': item["id"]})
+        li.addContextMenuItems([("Aufnahme löschen", f"RunPlugin({desc_now_url})")])
+        url = build_url({"mode": "rec", "id": item["id"]})
+        menu_listing.append((url, li, False))
 
     xbmcplugin.addDirectoryItems(__addon_handle__, menu_listing, len(menu_listing))
     xbmcplugin.endOfDirectory(__addon_handle__)
@@ -350,6 +387,40 @@ def vod(sub=None, con=None):
     xbmcplugin.endOfDirectory(__addon_handle__)
 
 
+def add_rec(rec_id):
+    token = login()
+    if not token:
+        return
+    headers.update({"Authorization": f"Bearer {token['access_token']}", "Content-Type": "application/vnd.waipu.recording-create-v4+json"})
+
+    url = "https://recording.waipu.tv/api/recordings"
+    post_data = '{"programId": "' + rec_id + '"}'
+
+    try:
+        add_rec_req = requests.post(url, headers=headers, data=post_data).json()
+        rec_id = add_rec_req["recordingId"]
+        xbmcgui.Dialog().notification(__addonname__, "Die Sendung wurde zu den Aufnahmen hinzugefügt.", xbmcgui.NOTIFICATION_INFO)
+    except Exception as e:
+        xbmcgui.Dialog().notification(__addonname__, "Die Sendung konnte nicht zu den Aufnahmen hinzugefügt werden.", xbmcgui.NOTIFICATION_ERROR)
+
+def del_rec(rec_id):
+    token = login()
+    if not token:
+        return
+    headers.update({"Authorization": f"Bearer {token['access_token']}", "Content-Type": "application/vnd.waipu.recording-ids-v4+json"})
+
+    url = "https://recording.waipu.tv/api/recordings"
+    post_data = '{"ids": ["' + rec_id + '"], "groupIds": [], "recordingSelection": ["AVAILABLE"]}'
+
+    add_rec_req = requests.delete(url, headers=headers, data=post_data)
+    
+    if add_rec_req.status_code == 204:
+        xbmcgui.Dialog().notification(__addonname__, "Die Aufnahme wurde gelöscht.", xbmcgui.NOTIFICATION_INFO)
+        xbmc.executebuiltin('Container.Refresh')
+    else:
+        xbmcgui.Dialog().notification(__addonname__, "Die Aufnahme konnte nicht gelöscht werden.", xbmcgui.NOTIFICATION_ERROR)
+
+
 def router(item):
     """Router function calling other functions of this script"""
 
@@ -364,6 +435,10 @@ def router(item):
             vod(params.get("sub"), params.get("con"))
         elif params.get("mode") == "play_vod":
             play_vod(params.get("sub"), params.get("con"), params.get("id"))
+        elif params.get("mode") == "add_rec":
+            add_rec(params.get("id"))
+        elif params.get("mode") == "del_rec":
+            del_rec(params.get("id"))
     else:  
         # MAIN
         main_listing = []
