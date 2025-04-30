@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from uuid import uuid4
 import base64
 import json
@@ -163,7 +163,7 @@ def play_vod(sub, con, id):
     playback(stream_url, license_str)
 
 
-def live(id=None, page=0):
+def live(id=None, restart=0, page=0):
     get_favorites = True if __addon__.getSetting("fav") == "true" else False
 
     token = login(True)
@@ -180,7 +180,8 @@ def live(id=None, page=0):
         license_str = get_license(token["access_token"])
 
         manifest_url = "https://stream-url-provider.waipu.tv/api/stream-url"
-        manifest_post = '{"stream": {"station": "' + str(id) + '", "protocol": "dash", "requestMuxInstrumentation": false}}'
+        manifest_restart = '"startTime": ' + str(restart) + '.000, "startTimeReason": "restart", ' if restart > 0 else ""
+        manifest_post = '{"stream": {"station": "' + str(id) + '", ' + manifest_restart + '"protocol": "dash", "requestMuxInstrumentation": false}}'
 
         stream_url = requests.post(manifest_url, headers=headers, data=manifest_post).json()["streamUrl"]
         
@@ -241,11 +242,13 @@ def live(id=None, page=0):
                         li = xbmcgui.ListItem(label=f'[B]{item["displayName"]}[/B] | {de["title"]}{(" | "+de["episodeTitle"]) if de.get("episodeTitle") else ""}')
                         li.setInfo('video', {'title': f'[B]{item["displayName"]}[/B] | {de["title"]}{(" | "+de["episodeTitle"]) if de.get("episodeTitle") else ""}', "plot": f'[COLOR=yellow][B]{de["bcd"]}: [/B]{de["title"]}[/COLOR]\n{de["nxt"] if de.get("nxt") else ""}\n{de["md"]["textContent"].get("descLong", "")}'})
                         li.setArt({"thumb": ch_logo, "poster": de.get("previewImage", "").replace("${resolution}", "1920x1080"), "fanart": de.get("previewImage", "").replace("${resolution}", "1920x1080")})
+                        restart = int(datetime(*(time.strptime(de["startTime"], "%Y-%m-%dT%H:%M:%SZ")[0:6])).replace(tzinfo=timezone.utc).timestamp())
                     else:
                         li = xbmcgui.ListItem(label=item["displayName"])
                         li.setInfo('video', {'title': item["displayName"], "plot": de["title"] if de else ""})
                         li.setArt({"thumb": ch_logo, "icon": ch_logo})
-                    url = build_url({"mode": "live", "id": item["stationId"]})
+                        restart = 0
+                    url = build_url({"mode": "live", "restart": restart, "id": item["stationId"]})
                     xbmcplugin.addDirectoryItem(handle=__addon_handle__, url=url, listitem=li, isFolder=False)
 
     xbmcplugin.endOfDirectory(__addon_handle__)
@@ -354,7 +357,7 @@ def router(item):
 
     if params:
         if params.get("mode") == "live":
-            live(params.get("id"), int(params.get("page", 0)))
+            live(params.get("id"), int(params.get("restart", 0)), int(params.get("page", 0)))
         if params.get("mode") == "rec":
             rec(params.get("id"), int(params.get("page", 0)))
         elif params.get("mode") == "vod":
