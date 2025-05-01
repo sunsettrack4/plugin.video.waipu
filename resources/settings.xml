@@ -1,7 +1,11 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <settings>
-    <category label="Settings">
-        <setting label="Settings" type="lsep"/>
-        <setting label="Load favorite channels only" type="bool" id="fav" default="false"/>
+    <category label="Allgemeine Einstellungen">
+        <setting label="Einstellungen" type="lsep"/>
+        <setting label="Live TV: Nur Favoriten laden" type="bool" id="fav" default="false"/>
+    </category>
+    <category label="Login für waipu.tv (optional)">
+        <setting label="E-Mail" type="text" id="username" default=""/>
+        <setting label="Passwort" type="text" id="password" option="hidden"  enable="!eq(-1,)" default=""/>
     </category>
 </settings>

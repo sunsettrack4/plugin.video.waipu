@@ -46,34 +46,48 @@ def login(device=False):
         auth_post = {'refresh_token': token["refresh_token"], 'grant_type': 'refresh_token', 'waipu_device_id': deviceid}
     
     except:
+
+        deviceid = str(uuid4())
+
+        __login = __addon__.getSetting("username")
+        __password = __addon__.getSetting("password")
+
+        # LOGIN VIA EMAIL/PW (waipu.tv)
+        if __login != "" and __password != "":
+            auth_post = {'username': __login, 'password': __password, 'grant_type': 'password', 'waipu_device_id': deviceid}
         
         # LOGIN VIA DEVICE REGISTRATION (waipu TV / o2 TV)
-        deviceid = str(uuid4())
-        dialog = xbmcgui.Dialog()
-        provider_list = ['waipu.tv', 'o2 TV']
-        provider_config = [{"tenant": "waipu", "verification_uri": "waipu.tv/anmelden"}, {"tenant": "o2", "verification_uri": "o2.de/tv-login"}]
+        else:
         
-        ret = dialog.select('Bitte wählen Sie Ihren Provider aus.', provider_list)
+            dialog = xbmcgui.Dialog()
+            provider_list = ['waipu.tv', 'o2 TV']
+            provider_config = [{"tenant": "waipu", "verification_uri": "waipu.tv/anmelden"}, {"tenant": "o2", "verification_uri": "o2.de/tv-login"}]
+            
+            ret = dialog.select('Bitte wählen Sie Ihren Provider aus.', provider_list)
 
-        url = "https://auth.waipu.tv/oauth/device_authorization"
-        data = {"client_id": provider_config[ret]["tenant"], "waipu_device_id": deviceid}
+            if ret == -1:
+                return
 
-        headers.update({'Authorization': 'Basic YW5kcm9pZENsaWVudDpzdXBlclNlY3JldA==', 'content-type': 'application/json'})
+            url = "https://auth.waipu.tv/oauth/device_authorization"
+            data = {"client_id": provider_config[ret]["tenant"], "waipu_device_id": deviceid}
 
-        token_page = requests.post(url, timeout=30, headers=headers, data=json.dumps(data))
+            headers.update({'Authorization': 'Basic YW5kcm9pZENsaWVudDpzdXBlclNlY3JldA==', 'content-type': 'application/json'})
 
-        try:
-            token_result = token_page.json()
-            token = token_result["device_code"]
-            user_code = token_result["user_code"]
-        except:
-            return
-        
-        del headers["content-type"]
+            token_page = requests.post(url, timeout=30, headers=headers, data=json.dumps(data))
 
-        dialog = xbmcgui.Dialog()
-        dialog.ok(provider_list[ret] + ": Aktivieren Sie Ihr Gerät", f'Besuchen Sie die Webseite: [B]{provider_config[ret]["verification_uri"]}[/B]\nGeben Sie dort den folgenden Code ein: [B]{user_code}[/B]\nNach erfolgreicher Login-Bestätigung kann dieses Fenster geschlossen werden.')
-        auth_post = {'device_code': token, 'grant_type': 'urn:ietf:params:oauth:grant-type:device_code', 'waipu_device_id': deviceid}
+            try:
+                token_result = token_page.json()
+                token = token_result["device_code"]
+                user_code = token_result["user_code"]
+            except Exception as e:
+                xbmcgui.Dialog().notification(__addonname__, "Die Geräte-Anmeldung ist fehlgeschlagen.", xbmcgui.NOTIFICATION_ERROR)
+                return
+            
+            del headers["content-type"]
+
+            dialog = xbmcgui.Dialog()
+            dialog.ok(provider_list[ret] + ": Aktivieren Sie Ihr Gerät", f'Besuchen Sie die Webseite: [B]{provider_config[ret]["verification_uri"]}[/B]\nGeben Sie dort den folgenden Code ein: [B]{user_code}[/B]\nNach erfolgreicher Login-Bestätigung kann dieses Fenster geschlossen werden.')
+            auth_post = {'device_code': token, 'grant_type': 'urn:ietf:params:oauth:grant-type:device_code', 'waipu_device_id': deviceid}
     
     auth = requests.post(auth_url, headers=headers, data=auth_post).json()
 
@@ -89,6 +103,10 @@ def login(device=False):
             os.remove(data_dir + "/token.json")
             return login()
         else:
+            if __login != "" and __password != "":
+                xbmcgui.Dialog().notification(__addonname__, "Die Anmeldung ist fehlgeschlagen (falsche Zugangsdaten).", xbmcgui.NOTIFICATION_ERROR)
+            else:
+                xbmcgui.Dialog().notification(__addonname__, "Die Anmeldung ist fehlgeschlagen.", xbmcgui.NOTIFICATION_ERROR)
             return
 
     try:
@@ -97,6 +115,7 @@ def login(device=False):
         if not device:
             return auth_data
     except:
+        xbmcgui.Dialog().notification(__addonname__, "Die Zugangsdaten können nicht gespeichert werden.", xbmcgui.NOTIFICATION_ERROR)
         return
     
      # DEVICE CAPABILITIES
