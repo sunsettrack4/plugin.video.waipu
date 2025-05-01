@@ -38,7 +38,7 @@ def login(device=False):
 
     # GET TOKEN
     try:
-        with open(data_dir + "/token.json", "r") as f:
+        with open(data_dir + "token.json", "r") as f:
             token = json.loads(f.read())
 
         deviceid = token["uuid"]
@@ -99,8 +99,8 @@ def login(device=False):
             "uuid": deviceid
         }
     except:
-        if os.path.exists(data_dir + "/token.json"):
-            os.remove(data_dir + "/token.json")
+        if os.path.exists(data_dir + "token.json"):
+            os.remove(data_dir + "token.json")
             return login()
         else:
             if __login != "" and __password != "":
@@ -110,12 +110,14 @@ def login(device=False):
             return
 
     try:
-        with open(data_dir + "/token.json", "w") as f:
+        if not os.path.exists(data_dir):
+            os.mkdir(data_dir)
+        with open(data_dir + "token.json", "w") as f:
             f.write(json.dumps(auth_data))
         if not device:
             return auth_data
     except:
-        xbmcgui.Dialog().notification(__addonname__, "Die Zugangsdaten können nicht gespeichert werden.", xbmcgui.NOTIFICATION_ERROR)
+        xbmcgui.Dialog().notification(__addonname__, f"Die Zugangsdaten können nicht gespeichert werden.", xbmcgui.NOTIFICATION_ERROR)
         return
     
      # DEVICE CAPABILITIES
