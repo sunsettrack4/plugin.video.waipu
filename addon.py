@@ -351,7 +351,7 @@ def rec(id=None, page=0):
             item["title"] = "[COLOR=yellowgreen][B](Geplant) [/B][/COLOR] " + item["title"]
         if item["status"] == "RECORDING":
             item["title"] = "[COLOR=yellow][B](Laufend) [/B][/COLOR] " + item["title"]
-        li = xbmcgui.ListItem(label=f'[B]{item["stationDisplay"]}[/B] | {item["title"]}{" | "+item["episodeTitle"] if item.get("episodeTitle") else ""} ({datetime.strptime(details["startTime"], "%Y-%m-%dT%H:%M:%S%z").strftime("%d.%m.%Y %H:%M")})')
+        li = xbmcgui.ListItem(label=f'[B]{item["stationDisplay"]}[/B] | {item["title"]}{" | "+item["episodeTitle"] if item.get("episodeTitle") else ""} ({datetime(*(time.strptime(details["startTime"], "%Y-%m-%dT%H:%M:%S%z")[0:6])).strftime("%d.%m.%Y %H:%M")})')
         li.setInfo('video', {'title': item["title"], 'plot': details['programDetails']['textContent']['descLong'] if details else ''})
         if item.get("previewImage"):
             li.setArt({"thumb": item["previewImage"].replace("${resolution}", "1920x1080"), "fanart": item["previewImage"].replace("${resolution}", "1920x1080")})
