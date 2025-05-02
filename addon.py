@@ -142,7 +142,7 @@ def get_license(token):
     return base64.b64encode(json.dumps(license).encode()).decode()
 
 
-def playback(stream_url, license_str):
+def playback(stream_url, license_str, restart=0):
     title = xbmc.getInfoLabel("ListItem.Title")
     thumb = xbmc.getInfoLabel("ListItem.Thumb")
     plot = xbmc.getInfoLabel("ListItem.Plot")
@@ -166,6 +166,12 @@ def playback(stream_url, license_str):
     xbmcplugin.setResolvedUrl(__addon_handle__, True, li)
 
     xbmc.Player().play(item=stream_url, listitem=li)
+    if restart != 0:
+        while not xbmc.Player().isPlaying():
+            time.sleep(1)
+        while xbmc.Player().getTime() == 0:
+            time.sleep(1)
+        xbmc.Player().seekTime(99999999999999)
 
 
 def play_vod(sub, con, id):
@@ -206,7 +212,7 @@ def live(id=None, restart=0, page=0):
 
         stream_url = requests.post(manifest_url, headers=headers, data=manifest_post).json()["streamUrl"]
         
-        playback(stream_url, license_str)
+        playback(stream_url, license_str, restart)
         return
 
 
@@ -285,6 +291,8 @@ def live(id=None, restart=0, page=0):
                         li.setArt({"thumb": ch_logo, "poster": de.get("previewImage", "").replace("${resolution}", "1920x1080"), "fanart": de.get("previewImage", "").replace("${resolution}", "1920x1080")})
                         restart = int(datetime(*(time.strptime(de["startTime"], "%Y-%m-%dT%H:%M:%SZ")[0:6])).replace(tzinfo=timezone.utc).timestamp())
                         context_list = []
+                        desc_restart_url = build_url({'mode': 'live', 'restart': restart, 'id': item["stationId"]})
+                        context_list.append(("Von Beginn ansehen", f"RunPlugin({desc_restart_url})"))
                         if not d["recordingForbidden"]:
                             desc_now_url = build_url({'mode': 'add_rec', 'id': de["id"]})
                             context_list.append(("Aktuelle Sendung aufnehmen", f"RunPlugin({desc_now_url})"))
@@ -297,7 +305,7 @@ def live(id=None, restart=0, page=0):
                         li.setInfo('video', {'title': item["displayName"], "plot": de["title"] if de else ""})
                         li.setArt({"thumb": ch_logo, "icon": ch_logo})
                         restart = 0
-                    url = build_url({"mode": "live", "restart": restart, "id": item["stationId"]})
+                    url = build_url({"mode": "live", "restart": 0, "id": item["stationId"]})
                     xbmcplugin.addDirectoryItem(handle=__addon_handle__, url=url, listitem=li, isFolder=False)
 
     xbmcplugin.endOfDirectory(__addon_handle__)
