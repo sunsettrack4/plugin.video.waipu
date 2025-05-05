@@ -171,7 +171,10 @@ def playback(stream_url, license_str, restart=0):
             time.sleep(1)
         while xbmc.Player().getTime() == 0:
             time.sleep(1)
-        xbmc.Player().seekTime(99999999999999)
+        if sys.platform.startswith('win32'):
+            xbmc.Player().seekTime(99999999999999)
+        else:
+            xbmc.Player().seekTime(-99999999999999)
 
 
 def play_vod(sub, con, id):
@@ -311,7 +314,7 @@ def live(id=None, restart=0, page=0):
     xbmcplugin.endOfDirectory(__addon_handle__)
 
 
-def rec(id=None, page=0):
+def rec(id=None, page=0, series=None):
     token = login()
     if not token:
         return
@@ -336,13 +339,17 @@ def rec(id=None, page=0):
 
     menu_listing = []
 
-    rec_url = "https://recording.waipu.tv/api/recordings"
+    if series:
+        rec_url = f"https://recording.waipu.tv/api/recordings?recordingGroup={series}"
+    else:
+        rec_url = "https://recording.waipu.tv/api/recordings"
 
     rec_list = requests.get(rec_url, headers=headers).json()
 
     headers.update({"Accept": "application/vnd.waipu.recording-v4+json"})
 
-    for number, item in enumerate(reversed(rec_list)):
+    number = 0
+    for item in reversed(rec_list):
         if number < page*20:
             continue
         if number > 19+page*20:
@@ -355,18 +362,27 @@ def rec(id=None, page=0):
             details = requests.get(f"https://recording.waipu.tv/api/recordings/{item['id']}", headers=headers).json()
         except Exception as e:
             details = str(e)
-        if item["status"] == "SCHEDULED":
+        if item["status"] == "SCHEDULED" and ((not details.get("recordingGroup")) or series):
+            if __addon__.getSetting("scheduled") == "true":
+                continue
             item["title"] = "[COLOR=yellowgreen][B](Geplant) [/B][/COLOR] " + item["title"]
-        if item["status"] == "RECORDING":
+        if item["status"] == "RECORDING" and ((not details.get("recordingGroup")) or series):
             item["title"] = "[COLOR=yellow][B](Laufend) [/B][/COLOR] " + item["title"]
-        li = xbmcgui.ListItem(label=f'[B]{item["stationDisplay"]}[/B] | {item["title"]}{" | "+item["episodeTitle"] if item.get("episodeTitle") else ""} ({datetime(*(time.strptime(details["startTime"], "%Y-%m-%dT%H:%M:%S%z")[0:6])).strftime("%d.%m.%Y %H:%M")})')
-        li.setInfo('video', {'title': item["title"], 'plot': details['programDetails']['textContent']['descLong'] if details else ''})
+        if details.get("recordingGroup") and not series:
+            item["title"] = "[COLOR=yellow][B](Serie)[/B][/COLOR] " + f'[B]{item["stationDisplay"]}[/B] | ' + item["title"]
+            li = xbmcgui.ListItem(label=item["title"])
+            url = build_url({"mode": "rec", "series": details["recordingGroup"]})
+            menu_listing.append((url, li, True))
+        else:
+            li = xbmcgui.ListItem(label=f'[B]{item["stationDisplay"]}[/B] | {item["title"]}{" | "+item["episodeTitle"] if item.get("episodeTitle") else ""} ({datetime(*(time.strptime(details["startTime"], "%Y-%m-%dT%H:%M:%S%z")[0:6])).strftime("%d.%m.%Y %H:%M")})')
+            li.setInfo('video', {'title': item["title"], 'plot': details['programDetails']['textContent']['descLong'] if details else ''})
+            desc_now_url = build_url({'mode': 'del_rec', 'id': item["id"]})
+            li.addContextMenuItems([("Aufnahme löschen", f"RunPlugin({desc_now_url})")])
+            url = build_url({"mode": "rec", "id": item["id"]})
+            menu_listing.append((url, li, False))
         if item.get("previewImage"):
             li.setArt({"thumb": item["previewImage"].replace("${resolution}", "1920x1080"), "fanart": item["previewImage"].replace("${resolution}", "1920x1080")})
-        desc_now_url = build_url({'mode': 'del_rec', 'id': item["id"]})
-        li.addContextMenuItems([("Aufnahme löschen", f"RunPlugin({desc_now_url})")])
-        url = build_url({"mode": "rec", "id": item["id"]})
-        menu_listing.append((url, li, False))
+        number = number + 1
 
     xbmcplugin.addDirectoryItems(__addon_handle__, menu_listing, len(menu_listing))
     xbmcplugin.endOfDirectory(__addon_handle__)
@@ -459,7 +475,7 @@ def router(item):
         if params.get("mode") == "live":
             live(params.get("id"), int(params.get("restart", 0)), int(params.get("page", 0)))
         if params.get("mode") == "rec":
-            rec(params.get("id"), int(params.get("page", 0)))
+            rec(params.get("id"), int(params.get("page", 0)), params.get("series"))
         elif params.get("mode") == "vod":
             vod(params.get("sub"), params.get("con"))
         elif params.get("mode") == "play_vod":
