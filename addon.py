@@ -166,15 +166,13 @@ def playback(stream_url, license_str, restart=0):
     xbmcplugin.setResolvedUrl(__addon_handle__, True, li)
 
     xbmc.Player().play(item=stream_url, listitem=li)
+    
     if restart != 0:
         while not xbmc.Player().isPlaying():
             time.sleep(1)
         while xbmc.Player().getTime() == 0:
             time.sleep(1)
-        if sys.platform.startswith('win32'):
-            xbmc.Player().seekTime(99999999999999)
-        else:
-            xbmc.Player().seekTime(-99999999999999)
+        xbmc.Player().seekTime(0.000)
 
 
 def play_vod(sub, con, id):
@@ -240,76 +238,75 @@ def live(id=None, restart=0, page=0):
             break
 
         if not item["locked"]:
-            if not item["locked"]:
-                if item["userSettings"]["visible"]:
+            if item["userSettings"]["visible"]:
+                
+                de = None
+                try:
+                    nxt = ""
+                    nxt_id = None
+                    nxt_count = 0
                     
-                    de = None
-                    try:
-                        nxt = ""
-                        nxt_id = None
-                        nxt_count = 0
-                        
-                        dt1 = datetime.now() - timedelta(hours=4)
-                        h1 = "00" if 0 <= dt1.hour < 4 else "04" if 4 <= dt1.hour < 8 else "08" if 8 <= dt1.hour < 12 else "12" if 12 <= dt1.hour < 16 else "16" if 16 <= dt1.hour < 20 else "20"
-                        details_1 = requests.get(f'https://epg-cache.waipu.tv/api/grid/{item["stationId"]}/{str(dt1.year)}-{("0" if len(str(dt1.month)) == 1 else "") + str(dt1.month)}-{("0" if len(str(dt1.day)) == 1 else "") + str(dt1.day)}T{h1}:00:00.000Z').json()
-                        
-                        dt2 = datetime.now()
-                        h2 = "00" if 0 <= dt2.hour < 4 else "04" if 4 <= dt2.hour < 8 else "08" if 8 <= dt2.hour < 12 else "12" if 12 <= dt2.hour < 16 else "16" if 16 <= dt2.hour < 20 else "20"
-                        details_2 = requests.get(f'https://epg-cache.waipu.tv/api/grid/{item["stationId"]}/{str(dt2.year)}-{("0" if len(str(dt2.month)) == 1 else "") + str(dt2.month)}-{("0" if len(str(dt2.day)) == 1 else "") + str(dt2.day)}T{h2}:00:00.000Z').json()
+                    dt1 = datetime.now() - timedelta(hours=4)
+                    h1 = f"{(dt1.hour // 4) * 4:02d}"
+                    details_1 = requests.get(f'https://epg-cache.waipu.tv/api/grid/{item["stationId"]}/{str(dt1.year)}-{("0" if len(str(dt1.month)) == 1 else "") + str(dt1.month)}-{("0" if len(str(dt1.day)) == 1 else "") + str(dt1.day)}T{h1}:00:00.000Z').json()
+                    
+                    dt2 = datetime.now()
+                    h2 = f"{(dt2.hour // 4) * 4:02d}"
+                    details_2 = requests.get(f'https://epg-cache.waipu.tv/api/grid/{item["stationId"]}/{str(dt2.year)}-{("0" if len(str(dt2.month)) == 1 else "") + str(dt2.month)}-{("0" if len(str(dt2.day)) == 1 else "") + str(dt2.day)}T{h2}:00:00.000Z').json()
 
-                        dt = details_1 + details_2
-                        details = {}
-                        for d in dt:
-                            if not details.get(d["id"]):
-                                details[d["id"]] = d
-                        details = [details[d] for d in details.keys()]
-                        
-                        for d in details:
-                            tb = datetime(*(time.strptime(d["startTime"], "%Y-%m-%dT%H:%M:%SZ")[0:6])).replace(tzinfo=timezone.utc)
-                            te = datetime(*(time.strptime(d["stopTime"], "%Y-%m-%dT%H:%M:%SZ")[0:6])).replace(tzinfo=timezone.utc)
-                            if tb <= datetime.now(timezone.utc) < te:
-                                try:
-                                    more_details = requests.get(f'https://epg-cache.waipu.tv/api/programs/{d["id"]}').json()
-                                    d["md"] = more_details
-                                except:
-                                    d["md"] = {"textContent": {"descLong": ""}}
-                                d["bcd"] = f'{tb.astimezone(tzlocal.get_localzone()).strftime("%H:%M")} - {te.astimezone(tzlocal.get_localzone()).strftime("%H:%M")}'
-                                de = d
-                            elif datetime.now(timezone.utc) < tb:
-                                if nxt_count < 1:
-                                    nxt = nxt + f'[B]{tb.astimezone(tzlocal.get_localzone()).strftime("%H:%M")} - {te.astimezone(tzlocal.get_localzone()).strftime("%H:%M")}[/B]: {d["title"]}\n'
-                                    nxt_id = d["id"] if not d["recordingForbidden"] else None
-                                nxt_count = nxt_count + 1
-                        de["nxt"] = nxt if nxt else None
-                    except:
-                        pass
+                    dt = details_1 + details_2
+                    details = {}
+                    for d in dt:
+                        if not details.get(d["id"]):
+                            details[d["id"]] = d
+                    details = [details[d] for d in details.keys()]
                     
-                    ch_logo = logos[item["stationId"]].replace(
-                        "${streamQuality}", item["streamQuality"]).replace(
-                            "${shape}", "standard").replace("${resolution}", "320x180")
-                    
-                    if de:
-                        li = xbmcgui.ListItem(label=f'[B]{item["displayName"]}[/B] | {de["title"]}{(" | "+de["episodeTitle"]) if de.get("episodeTitle") else ""}')
-                        li.setInfo('video', {'title': f'[B]{item["displayName"]}[/B] | {de["title"]}{(" | "+de["episodeTitle"]) if de.get("episodeTitle") else ""}', "plot": f'[COLOR=yellow][B]{de["bcd"]}: [/B]{de["title"]}[/COLOR]\n{de["nxt"] if de.get("nxt") else ""}\n{de["md"]["textContent"].get("descLong", "")}'})
-                        li.setArt({"thumb": ch_logo, "poster": de.get("previewImage", "").replace("${resolution}", "1920x1080"), "fanart": de.get("previewImage", "").replace("${resolution}", "1920x1080")})
-                        restart = int(datetime(*(time.strptime(de["startTime"], "%Y-%m-%dT%H:%M:%SZ")[0:6])).replace(tzinfo=timezone.utc).timestamp())
-                        context_list = []
-                        desc_restart_url = build_url({'mode': 'live', 'restart': restart, 'id': item["stationId"]})
-                        context_list.append(("Von Beginn ansehen", f"RunPlugin({desc_restart_url})"))
-                        if not d["recordingForbidden"]:
-                            desc_now_url = build_url({'mode': 'add_rec', 'id': de["id"]})
-                            context_list.append(("Aktuelle Sendung aufnehmen", f"RunPlugin({desc_now_url})"))
-                        if nxt_id:
-                            desc_next_url = build_url({'mode': 'add_rec', 'id': nxt_id})
-                            context_list.append(("Nächste Sendung aufnehmen", f"RunPlugin({desc_next_url})"))
-                        li.addContextMenuItems(context_list)
-                    else:
-                        li = xbmcgui.ListItem(label=item["displayName"])
-                        li.setInfo('video', {'title': item["displayName"], "plot": de["title"] if de else ""})
-                        li.setArt({"thumb": ch_logo, "icon": ch_logo})
-                        restart = 0
-                    url = build_url({"mode": "live", "restart": 0, "id": item["stationId"]})
-                    xbmcplugin.addDirectoryItem(handle=__addon_handle__, url=url, listitem=li, isFolder=False)
+                    for d in details:
+                        tb = datetime(*(time.strptime(d["startTime"], "%Y-%m-%dT%H:%M:%SZ")[0:6])).replace(tzinfo=timezone.utc)
+                        te = datetime(*(time.strptime(d["stopTime"], "%Y-%m-%dT%H:%M:%SZ")[0:6])).replace(tzinfo=timezone.utc)
+                        if tb <= datetime.now(timezone.utc) < te:
+                            try:
+                                more_details = requests.get(f'https://epg-cache.waipu.tv/api/programs/{d["id"]}').json()
+                                d["md"] = more_details
+                            except:
+                                d["md"] = {"textContent": {"descLong": ""}}
+                            d["bcd"] = f'{tb.astimezone(tzlocal.get_localzone()).strftime("%H:%M")} - {te.astimezone(tzlocal.get_localzone()).strftime("%H:%M")}'
+                            de = d
+                        elif datetime.now(timezone.utc) < tb:
+                            if nxt_count < 1:
+                                nxt = nxt + f'[B]{tb.astimezone(tzlocal.get_localzone()).strftime("%H:%M")} - {te.astimezone(tzlocal.get_localzone()).strftime("%H:%M")}[/B]: {d["title"]}\n'
+                                nxt_id = d["id"] if not d["recordingForbidden"] else None
+                            nxt_count = nxt_count + 1
+                    de["nxt"] = nxt if nxt else None
+                except:
+                    pass
+                
+                ch_logo = logos[item["stationId"]].replace(
+                    "${streamQuality}", item["streamQuality"]).replace(
+                        "${shape}", "standard").replace("${resolution}", "320x180")
+                
+                if de:
+                    li = xbmcgui.ListItem(label=f'[B]{item["displayName"]}[/B] | {de["title"]}{(" | "+de["episodeTitle"]) if de.get("episodeTitle") else ""}')
+                    li.setInfo('video', {'title': f'[B]{item["displayName"]}[/B] | {de["title"]}{(" | "+de["episodeTitle"]) if de.get("episodeTitle") else ""}', "plot": f'[COLOR=yellow][B]{de["bcd"]}: [/B]{de["title"]}[/COLOR]\n{de["nxt"] if de.get("nxt") else ""}\n{de["md"]["textContent"].get("descLong", "")}'})
+                    li.setArt({"thumb": ch_logo, "poster": de.get("previewImage", "").replace("${resolution}", "1920x1080"), "fanart": de.get("previewImage", "").replace("${resolution}", "1920x1080")})
+                    restart = int(datetime(*(time.strptime(de["startTime"], "%Y-%m-%dT%H:%M:%SZ")[0:6])).replace(tzinfo=timezone.utc).timestamp())
+                    context_list = []
+                    desc_restart_url = build_url({'mode': 'live', 'restart': restart, 'id': item["stationId"]})
+                    context_list.append(("Von Beginn ansehen", f"RunPlugin({desc_restart_url})"))
+                    if not d["recordingForbidden"]:
+                        desc_now_url = build_url({'mode': 'add_rec', 'id': de["id"]})
+                        context_list.append(("Aktuelle Sendung aufnehmen", f"RunPlugin({desc_now_url})"))
+                    if nxt_id:
+                        desc_next_url = build_url({'mode': 'add_rec', 'id': nxt_id})
+                        context_list.append(("Nächste Sendung aufnehmen", f"RunPlugin({desc_next_url})"))
+                    li.addContextMenuItems(context_list)
+                else:
+                    li = xbmcgui.ListItem(label=item["displayName"])
+                    li.setInfo('video', {'title': item["displayName"], "plot": de["title"] if de else ""})
+                    li.setArt({"thumb": ch_logo, "icon": ch_logo})
+                    restart = 0
+                url = build_url({"mode": "live", "restart": 0, "id": item["stationId"]})
+                xbmcplugin.addDirectoryItem(handle=__addon_handle__, url=url, listitem=li, isFolder=False)
 
     xbmcplugin.endOfDirectory(__addon_handle__)
 
