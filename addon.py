@@ -175,15 +175,20 @@ def playback(stream_url, license_str, restart=0):
         xbmc.Player().seekTime(0.000)
 
 
-def play_vod(sub, con, id):
+def play_vod(sub, con, id, src=None):
     token = login()
     if not token:
         return
     headers.update({"Authorization": f"Bearer {token['access_token']}"})
 
     license_str = get_license(token["access_token"])
-    
+
     content_url = f"https://tuner.wpstr.tv/microsites/{sub}/categories/{con}/videos/{id}"
+
+    if src:
+        xbmc.log(f"Using provided source URL: {src}", xbmc.LOGINFO)
+        content_url = src
+
     stream_data = requests.get(content_url, headers=headers).json()
     
     stream_url  = stream_data["player"]["mpd"]
@@ -405,7 +410,6 @@ def vod(sub=None, con=None):
 
     for item in main:
         img = item.get("img", item["video"].get("img") if con else item["contents"][0]["video"].get("img")) if sub else item["links"][0]["href"]
-
         li = xbmcgui.ListItem(label=item.get("title", item["video"]["title"] if con else ""))
         li.setArt({"thumb": img, "fanart": img if sub else None})
         li.setInfo('video', {
@@ -415,7 +419,7 @@ def vod(sub=None, con=None):
         })
         
         if con:
-            url_dict = {"mode": "play_vod", "sub": sub, "con": con, "id": item["video"]["programID"].split(":")[-1]}
+            url_dict = {"mode": "play_vod", "sub": sub, "con": con, "id": item["video"]["programID"].split(":")[-1], "src": item["video"]["source"]}
         else:
             url_dict = {"mode": "vod", "sub": sub if sub else item["channel"]}
         
@@ -476,7 +480,7 @@ def router(item):
         elif params.get("mode") == "vod":
             vod(params.get("sub"), params.get("con"))
         elif params.get("mode") == "play_vod":
-            play_vod(params.get("sub"), params.get("con"), params.get("id"))
+            play_vod(params.get("sub"), params.get("con"), params.get("id"), params.get("src"))
         elif params.get("mode") == "add_rec":
             add_rec(params.get("id"))
         elif params.get("mode") == "del_rec":
